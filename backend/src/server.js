@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+
 import authRoutes from './routes/authRoutes.js';
 import providerRoutes from './routes/providerRoutes.js';
 import bookingRoutes from './routes/bookingRoutes.js';
@@ -12,27 +13,32 @@ import reportRoutes from './routes/reportRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 
-
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware - Allow all origins for development, then specific origins
+// ✅ CORS FIX (PRODUCTION SAFE)
+const allowedOrigin = process.env.CLIENT_ORIGIN;
+
 app.use(cors({
-  origin: [
-    process.env.CLIENT_ORIGIN || "http://localhost:5173",
-    "http://localhost:5174"
-  ],
+  origin: function (origin, callback) {
+    if (!origin || origin === allowedOrigin) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
   credentials: true
 }));
 
-// Ensure preflight requests are handled for all routes
-app.options("*", cors());
+console.log("🌐 Allowed Origin:", allowedOrigin);
+
+// Middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static files from uploads directory
+// Static files
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 // Routes
@@ -45,34 +51,12 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/payments', paymentRoutes);
 
-// Root route - API documentation
+// Root route
 app.get('/', (req, res) => {
   res.json({
     message: 'FixFast Backend API',
-    version: '1.0.0',
-    endpoints: {
-      auth: {
-        'POST /api/auth/user/register': 'Register new user',
-        'POST /api/auth/user/login': 'User login',
-        'POST /api/auth/provider/register': 'Register new provider',
-        'POST /api/auth/provider/login': 'Provider login'
-      },
-      providers: {
-        'GET /api/providers': 'Get all providers',
-        'GET /api/providers/:id': 'Get provider by ID',
-        'PUT /api/providers/status': 'Update provider status (auth required)',
-        'PUT /api/providers/location': 'Update provider location (auth required)'
-      },
-      bookings: {
-        'POST /api/bookings': 'Create new booking (auth required)',
-        'GET /api/bookings': 'Get bookings (auth required)',
-        'POST /api/bookings/verify': 'Verify OTP (auth required)',
-        'PUT /api/bookings/:id/status': 'Update booking status (auth required)',
-        'PUT /api/bookings/:id/location': 'Update booking location (auth required)',
-        'PUT /api/bookings/:id/review': 'Submit review (auth required)'
-      }
-    },
-    health: '/health'
+    status: 'Running',
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -81,10 +65,10 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-// Error handling middleware
+// Error handler
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ message: 'Something went wrong!' });
+  console.error("❌ ERROR:", err.message);
+  res.status(500).json({ message: err.message || 'Server error' });
 });
 
 // 404 handler
@@ -92,31 +76,32 @@ app.use('*', (req, res) => {
   res.status(404).json({ message: 'Route not found' });
 });
 
+// Start server
 const startServer = (port) => {
   const server = app.listen(port, () => {
     console.log(`🚀 Server running on port ${port}`);
-    console.log(`📱 Client origin: ${process.env.CLIENT_ORIGIN || 'http://localhost:5173'}`);
+    console.log(`🌐 Client origin: ${allowedOrigin}`);
   });
 
   server.on('error', (error) => {
     if (error.code === 'EADDRINUSE') {
-      console.warn(`⚠️ Port ${port} is in use. Trying port ${port + 1}...`);
+      console.warn(`⚠️ Port ${port} busy. Trying ${port + 1}`);
       startServer(port + 1);
     } else {
-      console.error('❌ Server startup error:', error);
+      console.error('❌ Server error:', error);
       process.exit(1);
     }
   });
 };
 
-// Connect to MongoDB
+// MongoDB connection
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
-    console.log('✅ Connected to MongoDB');
+    console.log('✅ MongoDB connected');
     startServer(PORT);
   })
   .catch((error) => {
-    console.error('❌ MongoDB connection error:', error);
+    console.error('❌ MongoDB error:', error);
     process.exit(1);
   });
 
